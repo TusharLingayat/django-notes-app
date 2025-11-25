@@ -3,7 +3,7 @@ name: CI-CD Auto Deploy to Kubernetes
 on:
   push:
     branches:
-      - main   # whenever code changes in main branch → deployment happens
+      - main
 
 jobs:
   deploy:
@@ -20,30 +20,51 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASS }}
 
-      # Build & Push image with UNIQUE TAG (important)
+      # Build & Push image
       - name: Build & Push Docker Image
         run: |
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/myapp
-          TAG=$(date +%s)   # unique tag like: 1732432530
+          TAG=$(date +%s)
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
           docker build -t $IMAGE_NAME:$TAG .
           docker push $IMAGE_NAME:$TAG
 
-      # Apply kubeconfig
+      # Create kubeconfig
       - name: Configure kubeconfig
         run: |
           mkdir -p ~/.kube
           echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
 
-      # Update image in K8s deployment
+      # 🔹 Create OR Update Kubernetes Service (NodePort)
+      - name: Create/Update Service
+        run: |
+          cat <<EOF > service.yaml
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: myapp-service
+          spec:
+            type: NodePort
+            selector:
+              app: myapp
+            ports:
+              - port: 80
+                targetPort: 80
+                nodePort: 30080
+          EOF
+
+          kubectl apply -f service.yaml
+
+      # Update image in Deployment
       - name: Deploy to Kubernetes
         run: |
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/myapp
           kubectl set image deployment/myapp myapp=$IMAGE_NAME:${TAG}
 
-      # Verify status
+      # Verify Deployment
       - name: Verify Deployment
         run: |
           kubectl rollout status deployment/myapp
           kubectl get pods -o wide
+          kubectl get svc myapp-service -o wide
