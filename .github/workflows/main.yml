@@ -1,0 +1,49 @@
+name: CI-CD Auto Deploy to Kubernetes
+
+on:
+  push:
+    branches:
+      - main   # whenever code changes in main branch → deployment happens
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      # Login to Docker Hub
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # Build & Push image with UNIQUE TAG (important)
+      - name: Build & Push Docker Image
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/myapp
+          TAG=$(date +%s)   # unique tag like: 1732432530
+          echo "TAG=${TAG}" >> $GITHUB_ENV
+
+          docker build -t $IMAGE_NAME:$TAG .
+          docker push $IMAGE_NAME:$TAG
+
+      # Apply kubeconfig
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
+
+      # Update image in K8s deployment
+      - name: Deploy to Kubernetes
+        run: |
+          IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/myapp
+          kubectl set image deployment/myapp myapp=$IMAGE_NAME:${TAG}
+
+      # Verify status
+      - name: Verify Deployment
+        run: |
+          kubectl rollout status deployment/myapp
+          kubectl get pods -o wide
