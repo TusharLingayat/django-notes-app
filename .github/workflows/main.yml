@@ -24,7 +24,7 @@ jobs:
       - name: Build & Push Docker Image
         run: |
           IMAGE_NAME=${{ secrets.DOCKER_USERNAME }}/myapp
-          TAG=$(date +%s)
+          TAG=$(BUILD_NUMBER)
           echo "TAG=${TAG}" >> $GITHUB_ENV
 
           docker build -t $IMAGE_NAME:$TAG .
